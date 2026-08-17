@@ -115,17 +115,36 @@ that is not on the internal drive is never a candidate at all.
 ## Documentation
 
 - **[docs/partition-layout.md](docs/partition-layout.md)** — the full p1–p13 map, why there are two ESPs, how A/B slots pair up
-- **[docs/postmortem.md](docs/postmortem.md)** — what broke, how it was diagnosed, the two wrong turns taken on the way
+- **[docs/postmortem.md](docs/postmortem.md)** — what broke, how it was diagnosed, the wrong turns taken on the way
+- **[docs/reinstall.md](docs/reinstall.md)** — last-resort reinstall that keeps Windows, and the option that would destroy it
 - **[docs/cleaner-safety.md](docs/cleaner-safety.md)** — how to write a disk cleaner that cannot delete a boot partition
+
+---
+
+## The install this targets
+
+SteamOS was installed here with
+[Josh5/steamos_dual_boot_installer_patch](https://github.com/Josh5/steamos_dual_boot_installer_patch),
+which appends the standard eight-partition SteamOS set into prepared unallocated
+space instead of wiping the disk. The labels it writes — `esp`, `efi-A`,
+`efi-B`, `rootfs-A`, `rootfs-B`, `var-A`, `var-B`, `home` — are what everything
+here matches on, so this tooling should work against any install made with that
+patch regardless of where Windows put its own partitions.
+
+If SteamOS stops booting after a Windows update rather than after a disk cleaner,
+check the installer's prerequisites first: Fast Startup, Secure Boot, and
+BitLocker all being off, and the system clock on UTC. A Windows update can revert
+any of them, and Fast Startup in particular makes a perfectly intact SteamOS fail
+to boot.
 
 ---
 
 ## Known limitations
 
 Tested on one machine: a ROG Ally with Windows on `p1`–`p5` and SteamOS on
-`p6`–`p13`. The label-based addressing should carry to any SteamOS install
-including a stock Steam Deck, but the Windows ESP default (`${DISK}p1`) assumes
-Windows was installed first.
+`p6`–`p13`. Label matching should carry to any SteamOS install including a stock
+Steam Deck, but `WINDOWS_PARTS` defaults to `1 2 3 4 5` and assumes Windows was
+installed first.
 
 The recovery image's own GUI repair is not a substitute — it assumes SteamOS
 owns the entire disk and targeted Windows' ESP on this machine. Drive the repair

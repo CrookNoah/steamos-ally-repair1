@@ -1,27 +1,34 @@
 # Partition layout
 
 This machine runs Windows and SteamOS on one NVMe drive, `/dev/nvme0n1`.
-SteamOS was installed with a custom script that produced Valve's standard
-eight-partition set, placed after the Windows partitions.
+SteamOS was installed with
+[Josh5/steamos_dual_boot_installer_patch](https://github.com/Josh5/steamos_dual_boot_installer_patch),
+which installs into pre-allocated unallocated space and appends Valve's standard
+eight-partition set after the existing Windows partitions rather than wiping
+them.
 
 ## The map
 
-| Partition | Label | Approx. size | Filesystem | Purpose |
+| Partition | Label | Size | Filesystem | Purpose |
 |---|---|---|---|---|
 | `p1` | — | 100–300 MB | vfat | **Windows ESP.** Not SteamOS's. Nothing in this repo writes here. |
 | `p2` | — | 16 MB | — | Microsoft reserved |
 | `p3` | — | bulk | ntfs | Windows `C:` |
 | `p4`–`p5` | — | varies | ntfs | Windows recovery / vendor partitions |
-| `p6` | `esp` | 64 MB | vfat | **SteamOS ESP.** The bootloader lives here. |
-| `p7` | `efi-A` | 32 MB | vfat | Slot A EFI |
-| `p8` | `efi-B` | 32 MB | vfat | Slot B EFI |
-| `p9` | `rootfs-A` | 5 GB | ext4 | Slot A operating system |
-| `p10` | `rootfs-B` | 5 GB | ext4 | Slot B operating system |
-| `p11` | `var-A` | 256 MB | ext4 | Slot A mutable state |
-| `p12` | `var-B` | 256 MB | ext4 | Slot B mutable state |
+| `p6` | `esp` | 256 MB | vfat | **SteamOS ESP.** The bootloader lives here. |
+| `p7` | `efi-A` | 64 MB | vfat | Slot A EFI |
+| `p8` | `efi-B` | 64 MB | vfat | Slot B EFI |
+| `p9` | `rootfs-A` | 11 GB | ext4 | Slot A operating system |
+| `p10` | `rootfs-B` | 11 GB | ext4 | Slot B operating system |
+| `p11` | `var-A` | 1 GB | ext4 | Slot A mutable state |
+| `p12` | `var-B` | 1 GB | ext4 | Slot B mutable state |
 | `p13` | `home` | remainder | ext4 | Games, settings, user data |
 
 Partitions 1–5 belong to Windows. Partitions 6–13 belong to SteamOS.
+
+Sizes are the installer's documented defaults (`ESP_SIZE=256M`, `EFI_SIZE=64M`,
+`ROOT_SIZE=11G`, `VAR_SIZE=1G`); they are not checked by any script here, which
+matches on labels alone.
 
 ## Why the scripts never use these numbers
 
