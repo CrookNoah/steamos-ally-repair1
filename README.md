@@ -71,24 +71,44 @@ choose **Run In Konsole**.
 ## Safety
 
 The repair copies files onto existing filesystems. It does **not** format,
-repartition, or erase anything, and it refuses to write to Windows' ESP.
+repartition, or erase anything. It repairs SteamOS only and never writes to a
+Windows partition.
 
-Three guards enforce that:
+Four guards enforce that:
 
-**Partitions are addressed by GPT label, never by number.** `p6` here is the
-SteamOS ESP and `p9` is the root, but that is specific to this machine — the
-numbers shift with however many partitions Windows occupies in front of them.
-`resolve_label()` reads `/dev/disk/by-partlabel/`.
+**Partitions are found by GPT label, scanned on the internal disk only.**
+`p6` here is the SteamOS ESP and `p9` is the root, but those numbers are
+specific to this machine — they shift with however many partitions Windows
+occupies in front of them. The scripts scan `lsblk` output for `$DISK` rather
+than reading `/dev/disk/by-partlabel/`, for the reason below.
 
-**Labels that resolve off the internal drive are refused.** The recovery USB
-carries the same labels as the installed system. Anything that does not resolve
-to `/dev/nvme0n1` is rejected rather than repaired.
+**Windows partition numbers are refused outright.** `WINDOWS_PARTS` defaults to
+`1 2 3 4 5`. Any label that resolves to one of them aborts the run.
+
+**An ESP containing `EFI/Microsoft` is refused.** A content check, independent of
+labels and numbers, so Windows' boot partition is rejected even if every other
+assumption is wrong at once.
 
 **A mounted root without `/usr` aborts the run.** If the wrong slot or the wrong
 partition mounts, the script stops before writing. A wrong guess costs an error
 message, not a partition.
 
-Set `DISK=` to target a different drive, `SLOT=B` to repair the other A/B slot.
+Set `DISK=` to target a different drive, `SLOT=B` to repair the other A/B slot,
+`WINDOWS_PARTS=` if Windows occupies different partition numbers on your machine.
+
+### Why not `/dev/disk/by-partlabel/`
+
+The obvious way to find a labelled partition is that directory. It does not work
+here.
+
+It is a flat namespace with one symlink per label, and the SteamOS **recovery USB
+carries the same labels as the internal install** — `esp`, `efi-A`, `rootfs-A`.
+Whichever device udev enumerated first owns the symlink. On a machine booted
+from recovery media that is usually the USB, so `/dev/disk/by-partlabel/esp`
+points at `/dev/sdb1` and the internal ESP is unreachable through it.
+
+Scanning `$DISK` directly makes the collision structurally impossible: a device
+that is not on the internal drive is never a candidate at all.
 
 ---
 

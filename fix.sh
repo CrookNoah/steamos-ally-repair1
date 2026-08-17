@@ -6,13 +6,13 @@
 # own and run from a handheld with no keyboard:
 #
 #     sudo bash fix.sh
+#     SLOT=B sudo -E bash fix.sh     # if slot A is not the live one
 #
-# It does the same work as scripts/20-repair-bootloader.sh with the same guards,
-# collapsed into a single file. Prefer the numbered scripts when you have a
-# working keyboard — they diagnose and verify around the repair.
+# It repairs SteamOS only. It does not read, mount, or write any Windows
+# partition, and it will abort rather than touch one.
 #
 # Safety: copies files onto existing filesystems. Never formats, repartitions,
-# or erases. Never touches Windows' ESP.
+# or erases anything.
 
 set -euo pipefail
 
@@ -20,31 +20,53 @@ DISK="${DISK:-/dev/nvme0n1}"
 SLOT="${SLOT:-A}"
 MNT="${MNT:-/mnt/steamos-repair}"
 
-say()  { printf '\n==> %s\n' "$*"; }
-die()  { printf '\nFAILED: %s\n\n' "$*" >&2; exit 1; }
+# Partition numbers on $DISK belonging to Windows. Never touched.
+WINDOWS_PARTS="${WINDOWS_PARTS:-1 2 3 4 5}"
+
+say() { printf '\n==> %s\n' "$*"; }
+die() { printf '\nFAILED: %s\n\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "run with sudo: sudo bash fix.sh"
+[ -b "$DISK" ] || die "no such disk: $DISK"
 
 case "$SLOT" in A|a) SLOT=A ;; B|b) SLOT=B ;; *) die "SLOT must be A or B" ;; esac
 
-# Resolve a GPT label, refusing anything that is not on the internal drive.
-# Without this check the recovery USB's identical labels could be targeted.
+# Find a partition by GPT label, scanning $DISK only.
+#
+# Deliberately NOT /dev/disk/by-partlabel/ — that is a flat namespace with one
+# symlink per label, and the SteamOS recovery USB carries the same labels as the
+# internal install ('esp', 'efi-A', ...). Whichever device udev saw first owns
+# the symlink, which on a machine booted from recovery media is the USB.
+# Scanning $DISK makes targeting the wrong device impossible.
 resolve() {
-  local dev
-  dev="$(readlink -f "/dev/disk/by-partlabel/$1" 2>/dev/null || true)"
-  [ -b "${dev:-}" ] || die "no partition labeled '$1' on this machine"
-  case "$dev" in
-    "${DISK}"p[0-9]*|"${DISK}"[0-9]*) ;;
-    *) die "label '$1' resolves to $dev, not on $DISK — that is the USB, refusing" ;;
-  esac
-  printf '%s\n' "$dev"
+  local want="$1" name lbl matches='' n
+
+  while read -r name lbl; do
+    [ -n "${lbl:-}" ] || continue
+    [ "$lbl" = "$want" ] || continue
+    matches="${matches}/dev/${name} "
+  done <<EOF
+$(lsblk -rno NAME,PARTLABEL "$DISK" 2>/dev/null)
+EOF
+
+  # shellcheck disable=SC2086
+  set -- $matches
+  [ $# -ne 0 ] || die "no partition labeled '$want' on $DISK
+        see what is there with:  lsblk -o NAME,SIZE,FSTYPE,PARTLABEL $DISK"
+  [ $# -eq 1 ] || die "$DISK has multiple partitions labeled '$want': $*"
+
+  for n in $WINDOWS_PARTS; do
+    [ "$1" != "${DISK}p${n}" ] || die "$1 is a Windows partition. Refusing."
+  done
+
+  printf '%s\n' "$1"
 }
 
 ROOTFS="$(resolve "rootfs-${SLOT}")"
 ESP="$(resolve esp)"
 EFI="$(resolve "efi-${SLOT}")"
 
-say "slot ${SLOT}"
+say "slot ${SLOT} on ${DISK}"
 printf '    rootfs  %s\n    esp     %s\n    efi     %s\n' "$ROOTFS" "$ESP" "$EFI"
 
 mountpoint -q "$MNT" && die "$MNT already mounted — run: sudo umount -R $MNT"
@@ -62,6 +84,11 @@ mount "$ROOTFS" "$MNT"
 
 mkdir -p "$MNT/esp" "$MNT/efi"
 mount "$ESP" "$MNT/esp"
+
+# Content backstop: an ESP holding EFI/Microsoft is Windows', whatever its label
+# or number says. Catches the case where every assumption above was wrong.
+[ ! -d "$MNT/esp/EFI/Microsoft" ] || die "$ESP contains EFI/Microsoft — that is Windows' boot partition. Refusing."
+
 mount "$EFI" "$MNT/efi"
 for d in dev proc sys run; do mount --bind "/$d" "$MNT/$d"; done
 
@@ -78,7 +105,7 @@ cat <<'EOF'
 
 === DONE ===
 
-The SteamOS bootloader is back on the ESP.
+The SteamOS bootloader is back on the SteamOS ESP. Windows was not touched.
 
   sudo reboot
 

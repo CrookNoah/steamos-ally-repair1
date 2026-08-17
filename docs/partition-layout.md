@@ -29,9 +29,35 @@ The numbers above are correct for this machine and wrong for almost any other,
 because they depend on how many partitions Windows happens to occupy in front
 of them. A standard Steam Deck has the same eight partitions at `p1`–`p8`.
 
-Every script resolves partitions through `/dev/disk/by-partlabel/`, reading the
-labels Valve writes into the GPT at install time. The numbers in this document
-are for reading error messages, not for typing into commands.
+Every script finds partitions by the labels Valve writes into the GPT at install
+time. The numbers in this document are for reading error messages, not for
+typing into commands.
+
+## The label collision with the recovery USB
+
+Labels are looked up by scanning `lsblk -rno NAME,PARTLABEL /dev/nvme0n1`, not by
+reading `/dev/disk/by-partlabel/`. This matters more than it sounds.
+
+The SteamOS recovery image on the USB stick is itself a SteamOS install, and it
+carries partitions with **the same labels** — `esp`, `efi-A`, `rootfs-A`.
+`/dev/disk/by-partlabel/` is a flat namespace holding one symlink per label, so
+when two devices both claim `esp`, whichever udev enumerated first wins and the
+other becomes unreachable through that path.
+
+On a machine booted from the recovery USB, the winner is usually the USB:
+
+```
+$ readlink -f /dev/disk/by-partlabel/esp
+/dev/sdb1                 # the USB stick, not the install
+```
+
+A repair driven off that symlink would write the bootloader onto the recovery
+stick and leave the internal disk exactly as broken as before. Scanning the
+internal disk directly removes the ambiguity — a device that is not on
+`/dev/nvme0n1` is never a candidate.
+
+`scripts/10-diagnose.sh` reports both the scoped result and what the symlink
+points at, so the collision is visible rather than surprising.
 
 ## Two ESPs
 
