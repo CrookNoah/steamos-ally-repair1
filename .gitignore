@@ -1,0 +1,6 @@
+# Partition-table backups produced by scripts/00-preflight.sh.
+# These describe a specific machine's disk layout — keep them on the USB stick,
+# not in version control.
+steamos-repair-*/
+*.bin
+layout.txt
